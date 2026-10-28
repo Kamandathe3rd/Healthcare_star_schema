@@ -1,0 +1,181 @@
+============================================================
+STAR SCHEMA QUERIES - optimized versions of Q1-Q4
+Healthcare Analytics Lab - Part 3.3
+============================================================
+
+TEST SETUP
+- Same PC, same data volume and same method as Part 2
+  (docs/query_analysis.txt): Workbench "Don't Limit", 1 warm-up
+  run, median of 3 timed runs, EXPLAIN ANALYZE for rows/plan.
+- Star loaded by sql/06_etl_load.sql; reconciled with OLTP
+  (100,004 encounters, $299,654,156.71 allowed, 880 readmissions).
+- Every star query returns exactly the same rows as its OLTP
+  version (sql/04_oltp_queries.sql vs sql/07_star_queries.sql).
+- Times under ~0.05 s are taken from EXPLAIN ANALYZE because the
+  Windows/Workbench timer only ticks every ~15.6 ms.
+- Improvement factor = OLTP median / star median (for star times
+  under 0.05 s, the EXPLAIN ANALYZE time is used instead - Q3).
+
+------------------------------------------------------------
+QUESTION 1: Monthly Encounters by Specialty
+------------------------------------------------------------
+SQL:
+WITH monthly AS (
+    SELECT d.calendar_month,
+           f.specialty_key,
+           f.encounter_type_key,
+           COUNT(*)                      AS total_encounters,
+           COUNT(DISTINCT f.patient_key) AS unique_patients
+    FROM fact_encounters f
+    JOIN dim_date d ON d.date_key = f.encounter_date_key
+    GROUP BY d.calendar_month, f.specialty_key, f.encounter_type_key
+)
+SELECT m.calendar_month       AS encounter_month,
+       s.specialty_name,
+       t.encounter_type_name  AS encounter_type,
+       m.total_encounters,
+       m.unique_patients
+FROM monthly m
+JOIN dim_specialty      s ON s.specialty_key      = m.specialty_key
+JOIN dim_encounter_type t ON t.encounter_type_key = m.encounter_type_key
+ORDER BY encounter_month, s.specialty_name, encounter_type;
+
+Joins: OLTP 2 joins through providers (specialty 2 hops away);
+       star 3 joins, every dimension 1 hop from the fact.
+Execution time: OLTP 0.438 s -> star 0.125 s
+Improvement: 3.5x faster
+Why faster:
+- Denormalization: specialty_key stored on the fact, so providers
+  is no longer needed; month comes ready-made from
+  dim_date.calendar_month instead of DATE_FORMAT() on every row.
+- Better indexes: covering index idx_fact_month_mix (date,
+  specialty, type, patient) - the fact table rows are never read.
+- Aggregate on integer keys first, then add names to the 360
+  result rows (avoids sorting 100,004 rows by text names).
+- Remaining cost: COUNT(DISTINCT patient) still sorts 100,004
+  rows - unique counts cannot be pre-summed.
+
+------------------------------------------------------------
+QUESTION 2: Top Diagnosis-Procedure Pairs
+------------------------------------------------------------
+SQL:
+WITH top_pairs AS (
+    SELECT bd.diagnosis_key,
+           bp.procedure_key,
+           COUNT(*) AS encounter_count
+    FROM bridge_encounter_diagnoses  bd
+    JOIN bridge_encounter_procedures bp ON bp.encounter_key = bd.encounter_key
+    GROUP BY bd.diagnosis_key, bp.procedure_key
+    ORDER BY encounter_count DESC
+    LIMIT 10
+)
+SELECT dg.icd10_code,
+       dg.icd10_description,
+       pc.cpt_code,
+       pc.cpt_description,
+       tp.encounter_count
+FROM top_pairs tp
+JOIN dim_diagnosis dg ON dg.diagnosis_key = tp.diagnosis_key
+JOIN dim_procedure pc ON pc.procedure_key = tp.procedure_key
+ORDER BY tp.encounter_count DESC, dg.icd10_code, pc.cpt_code;
+
+Joins: OLTP 3 joins with code lookups on all 373,894 pair rows;
+       star bridge-to-bridge join on keys, code lookups for 10 rows.
+Execution time: OLTP 3.812 s -> star 0.672 s
+Improvement: 5.7x faster
+Why faster:
+- Better indexes: bridge PKs start with encounter_key, so one
+  encounter's codes are stored together (clustered) - covering
+  index scans/lookups only.
+- Narrow integer rows: grouping by two INT keys instead of four
+  text columns (codes + descriptions).
+- Names looked up only for the final 10 rows instead of 373,894.
+- COUNT(*) instead of COUNT(DISTINCT): bridge PKs guarantee one
+  row per (encounter, code).
+- Limitation: the row explosion itself remains (373,894 pairs);
+  a pre-aggregated pair table would be needed to remove it.
+
+------------------------------------------------------------
+QUESTION 3: 30-Day Readmission Rate
+------------------------------------------------------------
+SQL:
+SELECT s.specialty_name,
+       COUNT(*)                     AS inpatient_stays,
+       SUM(f.readmitted_within_30d) AS readmitted_stays,
+       ROUND(100 * SUM(f.readmitted_within_30d) / COUNT(*), 2) AS readmission_rate_pct
+FROM fact_encounters f
+JOIN dim_encounter_type t ON t.encounter_type_key = f.encounter_type_key
+JOIN dim_specialty      s ON s.specialty_key      = f.specialty_key
+WHERE t.is_inpatient = 1
+GROUP BY s.specialty_name
+ORDER BY readmission_rate_pct DESC;
+
+Joins: OLTP 3 joins including a SELF-JOIN on encounters;
+       star 2 small dimension joins, no self-join.
+Execution time: OLTP 0.547 s -> star 0.032 s
+(Workbench median showed 0.016 s, which is one timer tick;
+EXPLAIN ANALYZE measured 32 ms, used as the conservative value)
+Improvement: 17.1x faster
+Why faster:
+- Pre-aggregated: the self-join (15,074 stays x ~11 lookups) runs
+  ONCE in the ETL and is stored as readmitted_within_30d (0/1);
+  the query only SUMs it.
+- Better indexes: covering index idx_fact_readmit (type,
+  specialty, flag) reads just the 15,074 inpatient rows instead
+  of scanning all 100,004 encounters.
+- Denormalization: specialty_key on the fact (no providers join).
+- Same answer: Oncology highest at 6.55%.
+
+------------------------------------------------------------
+QUESTION 4: Revenue by Specialty & Month
+------------------------------------------------------------
+SQL:
+WITH monthly AS (
+    SELECT d.calendar_month,
+           f.specialty_key,
+           SUM(f.claim_count)          AS claims,
+           SUM(f.total_allowed_amount) AS total_allowed
+    FROM fact_encounters f
+    JOIN dim_date d ON d.date_key = f.encounter_date_key
+    GROUP BY d.calendar_month, f.specialty_key
+)
+SELECT m.calendar_month AS service_month,
+       s.specialty_name,
+       m.claims,
+       m.total_allowed
+FROM monthly m
+JOIN dim_specialty s ON s.specialty_key = m.specialty_key
+ORDER BY service_month, m.total_allowed DESC;
+
+Joins: OLTP billing -> encounters -> providers -> specialties
+       (3 joins, 100,004 lookups into billing);
+       star fact -> dim_date, fact -> dim_specialty (1 hop each).
+Execution time: OLTP 0.969 s -> star 0.094 s
+Improvement: 10.3x faster
+Why faster:
+- Pre-aggregated: claim_count and total_allowed_amount are stored
+  per encounter, so the billing table is not touched at all.
+- Fewer joins: 2 one-hop joins instead of a 3-join chain.
+- Better indexes: covering index idx_fact_revenue (date,
+  specialty, claims, allowed).
+- Safer: per-encounter grain means revenue cannot be multiplied
+  by diagnosis/procedure joins (the $748.6M trap from Part 2).
+
+============================================================
+SUMMARY
+============================================================
+Q  Question                      OLTP      Star      Faster  Main reason
+-- ----------------------------- --------- --------- ------- -----------------------------
+1  Monthly encounters/specialty  0.438 s   0.125 s    3.5x   denormalized keys + dim_date
+2  Top diagnosis-procedure pairs 3.812 s   0.672 s    5.7x   narrow bridges, late lookups
+3  30-day readmission rate       0.547 s   0.032 s   17.1x   pre-computed readmission flag
+4  Revenue by specialty & month  0.969 s   0.094 s   10.3x   pre-aggregated revenue
+   All 4 queries combined        5.766 s   0.923 s    6.2x
+
+Star EXPLAIN ANALYZE totals: Q1 172 ms, Q2 765 ms, Q3 32 ms, Q4 125 ms.
+
+Conclusion: the biggest gains come from work moved into the ETL
+(Q3 readmission flag, Q4 revenue). Denormalized keys and covering
+indexes help every query. Q1 and Q2 keep some unavoidable cost
+(unique-patient counting and diagnosis x procedure pairing), which
+only extra aggregate tables could remove.

@@ -1,0 +1,122 @@
+============================================================
+DESIGN DECISIONS - Star Schema for Healthcare Analytics
+Healthcare Analytics Lab - Part 3.1
+============================================================
+Target database: healthcare_star (separate from healthcare_oltp,
+which plays the live transactional system).
+Evidence below refers to the OLTP measurements in
+docs/query_analysis.txt.
+
+------------------------------------------------------------
+DECISION 1: FACT TABLE GRAIN
+------------------------------------------------------------
+Choice: Option A - one row per encounter (fact_encounters).
+
+Why it is best for the 4 queries:
+- Q1 (encounters by month/specialty/type), Q3 (readmissions) and
+  Q4 (revenue) are all naturally counted per encounter.
+- Money is stored ONCE per encounter. Option B or C would repeat
+  the claim amount on every diagnosis/procedure row. OLTP test:
+  joining billing to encounter_diagnoses inflated revenue from
+  $299.7M to $748.6M (2.5x). A per-encounter grain makes that
+  mistake impossible.
+- Option C would also drop encounters with 0 procedures
+  (e.g. sample encounter 7004).
+- Q2 (diagnosis-procedure pairs) is the only query that needs a
+  finer level; it is served by bridge tables (Decision 4) instead
+  of changing the grain.
+- 100,004 fact rows instead of 250k (B) or 150k (C): smaller and
+  faster to scan.
+
+------------------------------------------------------------
+DECISION 2: DIMENSION TABLES
+------------------------------------------------------------
+All dimensions use a surrogate key (INT) plus the source system's
+natural key, so the warehouse is protected from source ID
+changes. All except dim_date have an "Unknown" row (key 0) so
+missing source values never drop a fact row.
+
+dim_date (one row per calendar day, 2023-01-01 to 2025-12-31)
+  date_key (YYYYMMDD, e.g. 20240512), calendar_date, year,
+  quarter, month, month_name, calendar_month ('2024-05'),
+  day_of_month, day_of_week (1=Mon), day_name, week_of_year,
+  is_weekend
+  -> Q1/Q4 group by calendar_month instead of DATE_FORMAT() on every
+     row (OLTP finding: a function on the column blocks indexes).
+
+dim_patient
+  patient_key, patient_id, mrn, first_name, last_name, full_name,
+  gender, date_of_birth, age_group ('0-17','18-39','40-64','65+')
+
+dim_provider
+  provider_key, provider_id, first_name, last_name, full_name,
+  credential, specialty_name, department_name
+  -> specialty/department names denormalized for provider-level
+     reports without extra joins.
+
+dim_specialty
+  specialty_key, specialty_id, specialty_name, specialty_code
+
+dim_department
+  department_key, department_id, department_name, floor, capacity
+
+dim_encounter_type
+  encounter_type_key, encounter_type_name ('Outpatient',
+  'Inpatient', 'ER'), is_inpatient (1/0)
+
+dim_diagnosis
+  diagnosis_key, diagnosis_id, icd10_code, icd10_description
+
+dim_procedure
+  procedure_key, procedure_id, cpt_code, cpt_description
+
+------------------------------------------------------------
+DECISION 3: PRE-AGGREGATED METRICS IN THE FACT TABLE
+------------------------------------------------------------
+fact_encounters stores, per encounter:
+- diagnosis_count        : rows in encounter_diagnoses
+- procedure_count        : rows in encounter_procedures
+- claim_count            : rows in billing (0 if unbilled)
+- total_claim_amount     : SUM(claim_amount), 0 if unbilled
+- total_allowed_amount   : SUM(allowed_amount), 0 if unbilled
+- length_of_stay_hours   : discharge - encounter, in hours
+- readmitted_within_30d  : 1 if this Inpatient stay is followed by
+                           another Inpatient admission of the same
+                           patient within 30 days of discharge
+- specialty_key and department_key directly on the fact (not only
+  via dim_provider)
+
+Why this helps performance:
+- Q4: revenue is already on the fact row -> no billing join and no
+  3-join chain (OLTP: billing -> encounters -> providers ->
+  specialties, 100,004 billing lookups).
+- Q3: the expensive self-join (15,074 stays x ~11 lookups) runs
+  ONCE in the ETL; queries just SUM a 0/1 flag.
+- Q1/Q3/Q4: specialty is 1 hop from the fact instead of 2-3.
+- Counts and amounts are computed once per load instead of on
+  every query; storing a few numeric columns costs little space.
+
+------------------------------------------------------------
+DECISION 4: BRIDGE TABLES
+------------------------------------------------------------
+Choice: YES - bridge_encounter_diagnoses and
+bridge_encounter_procedures.
+
+Why:
+- An encounter has many diagnoses and many procedures. Putting
+  them in the fact would break the per-encounter grain and
+  multiply the money (Decision 1).
+- Fixed columns (diagnosis_1 ... diagnosis_4) would cap the number
+  of codes and make "which encounters have code X" queries awkward.
+- Bridges keep the fact small and clean while still allowing Q2.
+- Design for speed: integer surrogate keys only, primary key
+  (encounter_key, diagnosis_key / procedure_key) so rows of the
+  same encounter are stored together; count pairs on keys first,
+  then join the 300 result rows to the code dimensions.
+  Prototype: ~0.36 s vs ~2 s for the OLTP Q2 pairing.
+- diagnosis_sequence is kept in the bridge (1 = primary).
+
+Trade-off: Q2 still has to pair bridge rows (the explosion still
+exists), but on narrow integer rows with clustered keys; an extra
+pre-aggregated pair table could make Q2 instant if it became a
+daily report.
