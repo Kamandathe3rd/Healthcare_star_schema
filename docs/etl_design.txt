@@ -73,7 +73,7 @@ Session settings:
     UNIQUE natural key:
       INSERT INTO dim_patient (patient_id, mrn, ..., age_group)
       SELECT * FROM (SELECT ... FROM healthcare_oltp.patients
-                     WHERE <changed since last run>) AS src
+                     WHERE updated_at > @last_loaded_at) AS src
       ON DUPLICATE KEY UPDATE mrn = src.mrn, ...,
                               age_group = src.age_group;
     New patients are inserted, existing ones updated in place;
