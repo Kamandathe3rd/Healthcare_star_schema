@@ -17,17 +17,11 @@ business questions run **3.5x to 17.1x faster**, with identical answers.
 
 
 | # | Business question | OLTP (3NF) | Star schema | Speed-up | Main reason |
-
 |---|---|---|---|---|---|
-
 | Q1 | Monthly encounters by specialty | 0.438 s | 0.125 s | 3.5x | specialty key on the fact, month from `dim_date` |
-
 | Q2 | Top diagnosis-procedure pairs | 3.812 s | 0.672 s | 5.7x | narrow bridge tables, late name lookups |
-
 | Q3 | 30-day readmission rate | 0.547 s | 0.032 s | 17.1x | readmission flag pre-computed in the ETL |
-
 | Q4 | Revenue by specialty & month | 0.969 s | 0.094 s | 10.3x | revenue pre-aggregated on the fact |
-
 | | **All four combined** | **5.766 s** | **0.923 s** | **6.2x** | |
 
 
@@ -129,21 +123,13 @@ In MySQL Workbench:
 
 
 | Order | Script | What it does | Result |
-
 |---|---|---|---|
-
 | 1 | `sql/01_oltp_schema.sql` | Drops and creates `healthcare_oltp`, 10 tables, 10 FKs | empty OLTP |
-
 | 2 | `sql/02_oltp_sample_data.sql` | Lab sample data | 34 rows |
-
 | 3 | `sql/03_generate_test_data.sql` | Reproducible synthetic data (~20-60 s) | 100,004 encounters, ~600k rows |
-
 | 4 | `sql/04_oltp_queries.sql` | Q1-Q4 on OLTP (read-only) | 360 / 10 / 7 / 192 (+8) rows |
-
 | 5 | `sql/star_schema.sql` | Drops and creates `healthcare_star`, 11 tables | empty star |
-
 | 6 | `sql/06_etl_load.sql` | Loads dimensions, fact and bridges (~54 s) | 100,004 fact rows |
-
 | 7 | `sql/07_star_queries.sql` | Q1-Q4 on the star (read-only) | same rows as step 4 |
 
 
@@ -189,23 +175,14 @@ $299,654,156.71 allowed amount, 880 readmitted stays, 0 rows on Unknown keys.
 
 
 ```
-
-&#x20;                dim_date        dim_patient
-
-&#x20;                    │                │
-
-&#x20;dim_encounter_type ─┼─ fact_encounters ─┼─ dim_provider
-
-&#x20;                    │       │        │
-
-&#x20;         dim_specialty      │      dim_department
-
-&#x20;                            │
-
-&#x20;  bridge_encounter_diagnoses ── dim_diagnosis
-
-&#x20;  bridge_encounter_procedures ── dim_procedure
-
+                 dim_date        dim_patient
+                     │                │
+ dim_encounter_type ─┼─ fact_encounters ─┼─ dim_provider
+                     │       │        │
+          dim_specialty      │      dim_department
+                             │
+   bridge_encounter_diagnoses ── dim_diagnosis
+   bridge_encounter_procedures ── dim_procedure
 ```
 
 
@@ -317,18 +294,10 @@ upserts, late-arriving claims and readmissions):
 
 
 | Lab deliverable | File |
-
 |---|---|
-
-| 4 OLTP queries with performance analysis | [`docs/query\_analysis.txt`](docs/query_analysis.txt) (SQL in `sql/04_oltp_queries.sql`) |
-
+| 4 OLTP queries with performance analysis | [`docs/query_analysis.txt`](docs/query_analysis.txt) (SQL in `sql/04_oltp_queries.sql`) |
 | Star schema design choices | [`docs/design_decisions.txt`](docs/design_decisions.txt) |
-
 | Complete star schema DDL | [`sql/star_schema.sql`](sql/star_schema.sql) |
-
-| 4 optimized queries with comparison | [`docs/star\_schema\_queries.txt`](docs/star\_schema\_queries.txt) (SQL in `sql/07_star_queries.sql`) |
-
-| ETL pseudocode / narrative | [`docs/etl\_design.txt`](docs/etl_design.txt) (working ETL in `sql/06_etl_load.sql`) |
-
+| 4 optimized queries with comparison | [`docs/star_schema_queries.txt`](docs/star_schema_queries.txt) (SQL in `sql/07_star_queries.sql`) |
+| ETL pseudocode / narrative | [`docs/etl_design.txt`](docs/etl_design.txt) (working ETL in `sql/06_etl_load.sql`) |
 | 1-2 page analysis and reflection | [`docs/reflection.md`](docs/reflection.md) |
-
