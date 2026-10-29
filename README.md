@@ -87,13 +87,9 @@ healthcare-star-schema/
 
 
 | Tool | Version used |
-
 |---|---|
-
 | MySQL Server | 8.0.xx (8.0.18 or newer needed for `EXPLAIN ANALYZE` and recursive CTEs) |
-
 | MySQL Workbench | 8.0.xx |
-
 | OS | Windows 11 |
 
 
