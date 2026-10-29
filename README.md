@@ -26,7 +26,7 @@ business questions run **3.5x to 17.1x faster**, with identical answers.
 
 | Q3 | 30-day readmission rate | 0.547 s | 0.032 s | 17.1x | readmission flag pre-computed in the ETL |
 
-| Q4 | Revenue by specialty \& month | 0.969 s | 0.094 s | 10.3x | revenue pre-aggregated on the fact |
+| Q4 | Revenue by specialty & month | 0.969 s | 0.094 s | 10.3x | revenue pre-aggregated on the fact |
 
 | | **All four combined** | **5.766 s** | **0.923 s** | **6.2x** | |
 
