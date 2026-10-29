@@ -40,40 +40,35 @@ and [`docs/star_schema_queries.txt`](docs/star_schema_queries.txt).
 
 ```
 
-healthcare-star-schema/
-
+Healthcare_star_schema/
 ├── README.md
-
 ├── .gitignore
-
-├── sql/                              # run in this order
-
-│   ├── 01_oltp_schema.sql            # Part 1: 10 normalized tables (rebuilds healthcare_oltp)
-
-│   ├── 02_oltp_sample_data.sql       # Part 1: lab sample data (load order fixed)
-
-│   ├── 03_generate_test_data.sql     # Part 2: ~10k patients / ~100k encounters (synthetic)
-
-│   ├── 04_oltp_queries.sql           # Part 2: Q1-Q4 on the OLTP schema
-
-│   ├── star_schema.sql               # Part 3.2: star schema DDL (rebuilds healthcare_star)
-
-│   ├── 06_etl_load.sql               # Part 3.4: ETL, loads the star from OLTP
-
-│   └── 07_star_queries.sql           # Part 3.3: Q1-Q4 on the star schema
-
-└── docs/
-
-&#x20;   ├── query_analysis.txt            # Part 2 deliverable
-
-&#x20;   ├── design_decisions.txt          # Part 3.1 deliverable
-
-&#x20;   ├── star_schema_queries.txt       # Part 3.3 deliverable
-
-&#x20;   ├── etl_design.txt                # Part 3.4 deliverable
-
-&#x20;   └── reflection.md                 # Part 4 deliverable
-
+├── sql/                                      # run in this order
+│   ├── 01_oltp_schema.sql                    # Part 1: 10 normalized tables (rebuilds healthcare_oltp)
+│   ├── 02_oltp_sample_data.sql               # Part 1: lab sample data (load order fixed)
+│   ├── 03_generate_test_data.sql             # Part 2: ~10k patients / ~100k encounters (synthetic)
+│   ├── 04_oltp_queries.sql                   # Part 2: Q1-Q4 on the OLTP schema
+│   ├── star_schema.sql                       # Part 3.2: star schema DDL (rebuilds healthcare_star)
+│   ├── 06_etl_load.sql                       # Part 3.4: ETL, loads the star from OLTP
+│   └── 07_star_queries.sql                   # Part 3.3: Q1-Q4 on the star schema
+├── docs/
+│   ├── query_analysis.txt                    # Part 2 deliverable
+│   ├── design_decisions.txt                  # Part 3.1 deliverable
+│   ├── star_schema_queries.txt               # Part 3.3 deliverable
+│   ├── etl_design.txt                        # Part 3.4 deliverable
+│   └── reflection.md                         # Part 4 deliverable
+└── Results/                                  # Workbench screenshots (results)
+    ├── OLTP_Queries/
+    │   ├── Q1_monthly_encounters.png
+    │   ├── Q2_top_diagnosis_procedure_pairs.png
+    │   ├── Q3_readmission_rate.png
+    │   ├── Q4_revenue_by_specialty_month.png
+    │   └── Q4b_specialties_most_revenue.png
+    └── Star_Schema_Queries/
+        ├── Q1_monthly_encounters_specialty.png
+        ├── Q2_top_diagnosis_procedure_pairs.png
+        ├── Q3_readmission_rate_by_specialty.png
+        └── Q4_revenue_by_specialty_month.png
 ```
 
 
