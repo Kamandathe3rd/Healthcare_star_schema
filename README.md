@@ -57,8 +57,9 @@ Healthcare_star_schema/
 │   ├── star_schema_queries.txt               # Part 3.3 deliverable
 │   ├── etl_design.txt                        # Part 3.4 deliverable
 │   └── reflection.md                         # Part 4 deliverable
-└── Results/                                  # Workbench screenshots (results)
+└── Results/                                  # Workbench screenshots (results + timings)
     ├── OLTP_Queries/
+    │   ├──  oltp_queries_Timings.png
     │   ├── Q1_monthly_encounters.png
     │   ├── Q2_top_diagnosis_procedure_pairs.png
     │   ├── Q3_readmission_rate.png
@@ -69,6 +70,7 @@ Healthcare_star_schema/
         ├── Q2_top_diagnosis_procedure_pairs.png
         ├── Q3_readmission_rate_by_specialty.png
         └── Q4_revenue_by_specialty_month.png
+        └── star_queries_Timings.png
 ```
 
 
