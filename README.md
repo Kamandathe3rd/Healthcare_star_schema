@@ -1,6 +1,8 @@
 # Healthcare Analytics Lab: OLTP to Star Schema
 
 
+**Author:** David Kamanda
+**Database:** MySQL 8 (built and tested in MySQL Workbench)
 
 Data engineering mini project (AmaliTech training). A normalized (3NF)
 
